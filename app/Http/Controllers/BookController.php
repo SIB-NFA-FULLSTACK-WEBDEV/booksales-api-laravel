@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Book;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
 
 class BookController extends Controller
 {
@@ -75,5 +76,111 @@ class BookController extends Controller
                 'author_id' => $request->input('author_id')
             ]
         ], 201);
+    }
+
+    // Fungsi show untuk menampilkan detail buku berdasarkan ID
+    public function show($id)
+    {
+        $book = Book::find($id);
+        if (!$book) {
+            return response()->json([
+                "success" => false,
+                "message" => "Resource not found",
+            ], 404);
+        }
+
+        return response()->json([
+            "success" => true,
+            "message" => "Get resource",
+            "data" => $book
+        ], 200);
+    }
+
+    // Fungsi destroy untuk menghapus buku berdasarkan ID
+    public function destroy($id)
+    {
+        $book = Book::find($id);
+        if (!$book) {
+            return response()->json([
+                "success" => false,
+                "message" => "Resource not found",
+            ], 404);
+        }
+
+        if ($book->cover_photo) {
+            // Hapus file gambar dari storage
+            Storage::disk('public')->delete('books/' . $book->cover_photo);
+        }
+
+        $book->delete();
+
+        return response()->json([
+            "success" => true,
+            "message" => "Resource deleted successfully",
+        ], 200);
+    }
+
+    // Fungsi untuk mengupdate buku berdasarkan ID
+    public function update(Request $request, $id)
+    {
+        // 1. Mencari Data
+        $book = Book::find($id);
+        if (!$book) {
+            return response()->json([
+                "success" => false,
+                "message" => "Resource not found",
+            ], 404);
+        }
+
+        // 2. Validator
+        $validator = Validator::make($request->all(), [
+            'title' => 'string|max:255',
+            'description' => 'string',
+            'price' => 'numeric',
+            'stock' => 'integer',
+            'cover_photo' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
+            'genre_id' => 'exists:genres,id',
+            'author_id' => 'exists:authors,id'
+        ]);
+
+        // 3. Check validator error
+        if ($validator->fails()) {
+            return response()->json([
+                "success" => false,
+                "message" => "Validator error",
+                "data" => $validator->errors()
+            ], 422);
+        }
+
+        //4. Siapkan data untuk update
+        $data = [
+            'title' => $request->input('title', $book->title),
+            'description' => $request->input('description', $book->description),
+            'price' => $request->input('price', $book->price),
+            'stock' => $request->input('stock', $book->stock),
+            'genre_id' => $request->input('genre_id', $book->genre_id),
+            'author_id' => $request->input('author_id', $book->author_id)
+        ];
+
+        // 5. Handle image (upload dan hapus gambar)
+        if ($request->hasFile('cover_photo')) {
+            $image = $request->file('cover_photo');
+            $image->store('books', 'public');
+
+            if ($book->cover_photo) {
+                // Hapus file gambar lama dari storage
+                Storage::disk('public')->delete('books/' . $book->cover_photo);
+            }
+            
+            $data['cover_photo'] = $image->hashName();
+        }
+        // 6. Update data buku
+        $book->update($data);
+
+        return response()->json([
+            "success" => true,
+            "message" => "Resource updated successfully",
+            "data" => $book
+        ], 200);
     }
 }
